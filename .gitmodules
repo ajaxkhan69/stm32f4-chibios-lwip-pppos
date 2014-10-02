@@ -1,0 +1,3 @@
+[submodule "lib/ChibiOS-RT"]
+	path = lib/ChibiOS-RT
+	url = https://github.com/ChibiOS/ChibiOS-RT.git
