@@ -2,7 +2,7 @@
 LWIP = 	${CHIBIOS}/os/ext/lwip/src
 
 LWBINDSRC = \
-        $(CHIBIOS)/os/various/lwip_bindings/arch/sys_arch.c
+        lwip_bindings/arch/sys_arch.c
 
 LWCORESRC = \
         ${LWIP}/core/dhcp.c \
@@ -54,10 +54,14 @@ LWAPISRC = \
         ${LWIP}/api/sockets.c \
         ${LWIP}/api/tcpip.c
 
-LWSRC = $(LWBINDSRC) $(LWCORESRC) $(LWIPV4SRC) $(LWAPISRC) $(LWIPPPSRC)
+LWSIOSRC = \
+		 lwip_bindings/sio.c \
+		 lwip_bindings/socketstreams.c
+
+LWSRC = $(LWBINDSRC) $(LWCORESRC) $(LWIPV4SRC) $(LWAPISRC) $(LWIPPPSRC) $(LWSIOSRC)
 
 LWINC = \
-        $(CHIBIOS)/os/various/lwip_bindings \
+        lwip_bindings \
         ${LWIP}/include \
         ${LWIP}/include/ipv4 \
         ${LWIP}/netif

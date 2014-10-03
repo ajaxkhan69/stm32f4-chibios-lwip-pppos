@@ -18,65 +18,160 @@
 #include "hal.h"
 #include "test.h"
 
+#include "shell.h"
+#include "sysinfo.h"
+#include "socketstreams.h"
+
+#include "lwip/sockets.h"
 #include "lwip/tcpip.h"
 #include "ppp/ppp.h"
 
+#include <string.h>
+
+
+#define PPP_CONNECTED_EVENT_FLAG      1
+#define PPP_DISCONNECTED_EVENT_FLAG 	2
+#define PPP_ERROR_EVENT_FLAG          4
+
+EVENTSOURCE_DECL(pppEventSource);
+
+
 /*
- * PPP Thread setup up pppos and handles packets
+ * Shell related
  */
-static void ppp_linkstatus_callback(void *ctx, int errCode, void *arg) {
-	(void) arg;
-	if (errCode == PPPERR_NONE) {
-		*((int *) ctx) = 1;
-	} else {
-		*((int *) ctx) = 0;
-	}
-}
+#define SHELL_WA_SIZE   THD_WORKING_AREA_SIZE(1024)
 
-static THD_WORKING_AREA(waPPPThread, 1048);
-static THD_FUNCTION(PPPThread, arg) {
+static const ShellCommand shell_commands[] = {
+	SYSINFO_SHELL_COMMANDS,
+	{NULL, NULL}
+};
+
+
+/*
+ * UDP Echo server thread
+ */
+static THD_WORKING_AREA(waEchoServerThread, 512 + 1024);
+static THD_FUNCTION(EchoServerThread, arg) {
 	(void) arg;
 
-	int pd, connected = 0;
-  struct netconn *nconn;
-  struct netbuf *nbuf;
-  err_t err;
+	event_listener_t pppEventListener;
+
+	int sock;
+	struct sockaddr_in sa;
+	char buffer[1024];
+	int recsize;
+	socklen_t fromlen;
+
+  chRegSetThreadName("EchoServerThread");
+
+	chEvtRegisterMask(&pppEventSource, &pppEventListener, ALL_EVENTS);
 
 	while (!chThdShouldTerminateX()) {
-		pd = pppOverSerialOpen(&SD2, ppp_linkstatus_callback, &connected);
-		if (pd >= 0) {
-			while (!connected) {
-				chThdSleep(MS2ST(100));
-			}
+		chEvtWaitOne(PPP_CONNECTED_EVENT_FLAG);  // Wait for interface to come up
 
-		  nconn = netconn_new(NETCONN_UDP);
-			if (nconn == NULL) {
-				pppClose(pd);
-				return MSG_OK;
-			}
-
-			if (netconn_bind(nconn, IP_ADDR_ANY, 8000) != ERR_OK) {
-				netconn_delete(nconn);
-				pppClose(pd);
-				return MSG_OK;
-			}
-
-			while (!chThdShouldTerminateX() && connected) {
-				err = netconn_recv(nconn, &nbuf);
-				if (err == ERR_OK) {
-					// TODO: Handle packet
-					netbuf_delete(nbuf);
-				}
-			}
-
-			netconn_delete(nconn);
-			pppClose(pd);
+		sock = lwip_socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
+		if (sock == -1) {
+			return MSG_RESET;
 		}
-		chThdSleep(S2ST(5)); // Wait to try again
+
+		memset(&sa, 0, sizeof sa);
+		sa.sin_family = AF_INET;
+		sa.sin_addr.s_addr = htonl(INADDR_ANY);
+		sa.sin_port = htons(8000);
+		fromlen = sizeof(sa);
+
+		if (lwip_bind(sock, (struct sockaddr *) &sa, sizeof(sa)) == -1) {
+			lwip_close(sock);
+			return MSG_RESET;
+		}
+
+		while (!chThdShouldTerminateX()) {
+			recsize = lwip_recvfrom(sock, buffer, sizeof(buffer), 0,
+					(struct sockaddr *) &sa, &fromlen);
+			if (recsize < 0) {
+				break;
+			}
+			lwip_sendto(sock, (void *) buffer, recsize, 0, (struct sockaddr *) &sa,
+					fromlen);
+		}
+
+		lwip_close(sock);
 	}
 
 	return MSG_OK;
 }
+
+
+/*
+ * TCP Shell server thread
+ */
+static THD_WORKING_AREA(waShellServerThread, 512);
+static THD_FUNCTION(ShellServerThread, arg) {
+	(void) arg;
+
+	event_listener_t pppEventListener;
+
+  int sockfd, newsockfd;
+  socklen_t cli_addr_len;
+	struct sockaddr_in serv_addr, cli_addr;
+
+	SocketStream sbp;
+	ShellConfig shell_cfg;
+	thread_t *shelltp;
+
+	chRegSetThreadName("ShellServerThread");
+
+	chEvtRegisterMask(&pppEventSource, &pppEventListener, ALL_EVENTS);
+
+  memset(&serv_addr, 0, sizeof(serv_addr));
+  serv_addr.sin_family = AF_INET;
+  serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+  serv_addr.sin_port = PP_HTONS(25);
+
+	while (!chThdShouldTerminateX()) {
+		chEvtWaitOne(PPP_CONNECTED_EVENT_FLAG);  // Wait for interface to come up
+
+		sockfd = lwip_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+		if (sockfd < 0)
+				return MSG_RESET;
+
+		if (lwip_bind(sockfd, (const struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
+			lwip_close(sockfd);
+			return MSG_RESET;
+		}
+
+		if (lwip_listen(sockfd, 1) < 0) {
+			lwip_close(sockfd);
+			return MSG_RESET;
+		}
+
+		cli_addr_len = sizeof(cli_addr);
+
+		while(!chThdShouldTerminateX()) {
+			newsockfd = lwip_accept(sockfd, (struct sockaddr * )&cli_addr, &cli_addr_len);
+			if (newsockfd < 0) {
+				break;
+			}
+
+			ssObjectInit(&sbp, newsockfd);
+			shell_cfg.sc_channel = (BaseSequentialStream*) &sbp;
+			shell_cfg.sc_commands = shell_commands;
+
+			shelltp = shellCreate(&shell_cfg, SHELL_WA_SIZE, NORMALPRIO);
+			chThdWait(shelltp);
+
+			lwip_close(newsockfd);
+		}
+
+		if(lwip_shutdown(sockfd, SHUT_RDWR) < 0) {
+			// oops
+		}
+		lwip_close(sockfd);
+	}
+
+	return MSG_OK;
+}
+
 
 /*
  * This is a periodic thread that does absolutely nothing except flashing
@@ -84,22 +179,38 @@ static THD_FUNCTION(PPPThread, arg) {
  */
 static THD_WORKING_AREA(waThread1, 128);
 static THD_FUNCTION(Thread1, arg) {
-
   (void)arg;
-  chRegSetThreadName("blinker");
+
+  chRegSetThreadName("Thread1");
+
   while (TRUE) {
     palSetPad(GPIOD, GPIOD_LED3);       /* Orange.  */
     chThdSleepMilliseconds(500);
     palClearPad(GPIOD, GPIOD_LED3);     /* Orange.  */
     chThdSleepMilliseconds(500);
   }
+
+	return MSG_OK;
 }
+
+
+/*
+ * Handle link status events
+ */
+static void ppp_linkstatus_callback(void *ctx, int errCode, void *arg) {
+	(void) arg;
+	(void) ctx;
+
+	if (errCode == PPPERR_NONE) {
+			chEvtBroadcastFlags(&pppEventSource, PPP_CONNECTED_EVENT_FLAG);
+	}
+}
+
 
 /*
  * Application entry point.
  */
 int main(void) {
-
   /*
    * System initializations.
    * - HAL initialization, this also initializes the configured device drivers
@@ -121,8 +232,7 @@ int main(void) {
   /*
    * Creates the example thread.
    */
-  chThdCreateStatic(waThread1, sizeof(waThread1), NORMALPRIO, Thread1, NULL);
-
+  chThdCreateStatic(waThread1, sizeof(waThread1), NORMALPRIO + 10, Thread1, NULL);
 
   /*
    * lwip ppp
@@ -130,15 +240,28 @@ int main(void) {
 	tcpip_init(NULL, NULL);
 	pppInit();
 
-	chThdCreateStatic(waPPPThread, sizeof(waPPPThread), NORMALPRIO + 1, PPPThread, NULL);
+	/*
+	 * Setup shell
+	 */
+	shellInit();
+
+	/*
+	 * Echo server
+	 */
+	chThdCreateStatic(waEchoServerThread, sizeof(waEchoServerThread), NORMALPRIO + 1, EchoServerThread, NULL);
+
+	/*
+	 * TCP Shell server
+	 */
+	chThdCreateStatic(waShellServerThread, sizeof(waShellServerThread), NORMALPRIO, ShellServerThread, NULL);
 
   /*
-   * Normal main() thread activity, in this demo it just performs
-   * a shell respawn upon its termination.
+   * Keep ppp connection up.
    */
   while (TRUE) {
-    if (palReadPad(GPIOA, GPIOA_BUTTON))
-      TestThread(&SD2);
-    chThdSleepMilliseconds(500);
+  	pppOverSerialOpen(&SD2, ppp_linkstatus_callback, NULL);
+		chThdSleep(TIME_INFINITE);
+		// Would like to restart here but at the moment we can't
+		// See: http://lists.gnu.org/archive/html/lwip-users/2012-02/msg00124.html
   }
 }

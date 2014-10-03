@@ -248,7 +248,7 @@
  * (requires the LWIP_TCP option)
  */
 #ifndef MEMP_NUM_TCP_PCB
-#define MEMP_NUM_TCP_PCB                5
+#define MEMP_NUM_TCP_PCB                4
 #endif
 
 /**
@@ -256,7 +256,7 @@
  * (requires the LWIP_TCP option)
  */
 #ifndef MEMP_NUM_TCP_PCB_LISTEN
-#define MEMP_NUM_TCP_PCB_LISTEN         8
+#define MEMP_NUM_TCP_PCB_LISTEN         4
 #endif
 
 /**
@@ -321,7 +321,7 @@
  * (only needed if you use the sequential API, like api_lib.c)
  */
 #ifndef MEMP_NUM_NETBUF
-#define MEMP_NUM_NETBUF                 2
+#define MEMP_NUM_NETBUF                 4
 #endif
 
 /**
@@ -1431,7 +1431,7 @@
  * (only used if you use sockets.c)
  */
 #ifndef LWIP_COMPAT_SOCKETS
-#define LWIP_COMPAT_SOCKETS             1
+#define LWIP_COMPAT_SOCKETS             0
 #endif
 
 /**
@@ -1440,7 +1440,7 @@
  * names (read, write & close). (only used if you use sockets.c)
  */
 #ifndef LWIP_POSIX_SOCKETS_IO_NAMES
-#define LWIP_POSIX_SOCKETS_IO_NAMES     1
+#define LWIP_POSIX_SOCKETS_IO_NAMES     0
 #endif
 
 /**
