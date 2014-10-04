@@ -1,22 +1,10 @@
-/*
-    ChibiOS - Copyright (C) 2006-2014 Giovanni Di Sirio
-
-    Licensed under the Apache License, Version 2.0 (the "License");
-    you may not use this file except in compliance with the License.
-    You may obtain a copy of the License at
-
-        http://www.apache.org/licenses/LICENSE-2.0
-
-    Unless required by applicable law or agreed to in writing, software
-    distributed under the License is distributed on an "AS IS" BASIS,
-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-    See the License for the specific language governing permissions and
-    limitations under the License.
-*/
-/*
- * **** This file incorporates work covered by the following copyright and ****
- * **** permission notice:                                                 ****
+/**
+ * @file
+ * Functions common to all TCP/IPv4 modules, such as the byte order functions.
  *
+ */
+
+/*
  * Copyright (c) 2001-2004 Swedish Institute of Computer Science.
  * All rights reserved.
  *
@@ -48,21 +36,7 @@
  *
  */
 
-#include <hal.h>
+#include "lwip/opt.h"
 
-#ifndef __SYS_ARCH_H__
-#define __SYS_ARCH_H__
+#include "lwip/inet.h"
 
-typedef semaphore_t *   sys_sem_t;
-typedef mailbox_t *     sys_mbox_t;
-typedef thread_t *      sys_thread_t;
-typedef int             sys_prot_t;
-
-#define SYS_MBOX_NULL   (mailbox_t *)0
-#define SYS_THREAD_NULL (thread_t *)0
-#define SYS_SEM_NULL    (semaphore_t *)0
-
-/* let sys.h use binary semaphores for mutexes */
-#define LWIP_COMPAT_MUTEX 1
-
-#endif /* __SYS_ARCH_H__ */

@@ -60,6 +60,7 @@
 #include "arch/cc.h"
 #include "arch/sys_arch.h"
 
+
 void sys_init(void) {
 
 }
@@ -203,20 +204,16 @@ void sys_mbox_set_invalid(sys_mbox_t *mbox) {
 sys_thread_t sys_thread_new(const char *name, lwip_thread_fn thread,
                             void *arg, int stacksize, int prio) {
 
-  size_t wsz;
-  void *wsp;
   thread_t *t;
 
-  (void)name;
-  wsz = THD_WORKING_AREA_SIZE(stacksize);
-  wsp = chCoreAlloc(wsz);
-  if (wsp == NULL)
-    return NULL;
-
-  t = chThdCreateStatic(wsp, wsz, prio, (tfunc_t)thread, arg);
+  t = chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(stacksize), prio, (tfunc_t)thread, arg);
   t->p_name = name;
 
   return (sys_thread_t)t;
+}
+
+void sys_thread_free(sys_thread_t thread) {
+	chThdWait(thread);
 }
 
 sys_prot_t sys_arch_protect(void) {
