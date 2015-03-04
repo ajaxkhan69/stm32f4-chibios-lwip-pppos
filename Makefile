@@ -105,7 +105,7 @@ CSRC = $(PORTSRC) \
        $(PLATFORMSRC) \
        $(BOARDSRC) \
        $(CHIBIOS)/os/various/shell.c \
-       $(CHIBIOS)/os/various/chprintf.c \
+       $(CHIBIOS)/os/hal/lib/streams/chprintf.c \
        $(LWSRC) \
        sysinfo.c \
        main.c
@@ -139,7 +139,7 @@ ASMSRC = $(PORTASM)
 
 INCDIR = $(PORTINC) $(KERNINC) $(TESTINC) \
          $(HALINC) $(OSALINC) $(PLATFORMINC) $(BOARDINC) \
-         $(CHIBIOS)/os/various $(LWINC)
+         $(CHIBIOS)/os/hal/lib/streams $(CHIBIOS)/os/various $(LWINC)
 
 #
 # Project, sources and paths
